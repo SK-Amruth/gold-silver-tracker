@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gold &amp; Silver Exchange — Daily Rates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #1a1d23;
+    --bg-raised: #21252c;
+    --gold: #c9a227;
+    --gold-bright: #e0bb3f;
+    --silver: #b8bcc2;
+    --silver-bright: #d4d7db;
+    --text: #ede9e3;
+    --muted: #8b8f98;
+    --hairline: #33373f;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  header.masthead {
+    text-align: center;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+  }
+
+  header.masthead .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  header.masthead h1 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 700;
+    font-style: italic;
+    font-size: clamp(28px, 5vw, 44px);
+    margin: 0 0 10px;
+    letter-spacing: 0.01em;
+  }
+
+  header.masthead .date {
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 48px;
+  }
+
+  @media (max-width: 560px) {
+    .cards { grid-template-columns: 1fr; }
+  }
+
+  .ingot {
+    position: relative;
+    background: linear-gradient(155deg, var(--bg-raised) 0%, #191c22 100%);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 28px 24px 24px;
+    overflow: hidden;
+  }
+
+  .ingot::before {
+    content: "";
+    position: absolute;
+    top: -40%;
+    left: -20%;
+    width: 60%;
+    height: 180%;
+    background: linear-gradient(100deg, transparent 40%, rgba(255,255,255,0.05) 50%, transparent 60%);
+    transform: rotate(8deg);
+  }
+
+  .ingot .hallmark {
+    position: absolute;
+    top: 16px;
+    right: 18px;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 13px;
+    color: var(--muted);
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    padding: 2px 8px;
+  }
+
+  .ingot.gold .hallmark { color: var(--gold-bright); border-color: rgba(201,162,39,0.35); }
+  .ingot.silver .hallmark { color: var(--silver-bright); border-color: rgba(184,188,194,0.35); }
+
+  .ingot .metal-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 18px;
+  }
+
+  .ingot.gold .metal-name { color: var(--gold-bright); }
+  .ingot.silver .metal-name { color: var(--silver-bright); }
+
+  .ingot .price-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 7px 0;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .ingot .price-row:first-of-type { border-top: none; }
+
+  .ingot .price-label {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .ingot .price-value {
+    font-size: 17px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .chart-section {
+    background: var(--bg-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 32px;
+  }
+
+  .chart-section h2 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 600;
+    font-size: 16px;
+    margin: 0 0 4px;
+    color: var(--text);
+  }
+
+  .chart-section .sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .chart-container {
+    position: relative;
+    height: 280px;
+  }
+
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.8;
+  }
+
+  footer a { color: var(--silver-bright); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  .state-msg {
+    text-align: center;
+    color: var(--muted);
+    padding: 40px 0;
+    font-size: 13px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--gold-bright);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ingot::before { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Daily Precious Metals Rate Card</div>
+    <h1>Gold &amp; Silver Exchange</h1>
+    <div class="date" id="today-date">—</div>
+  </header>
+
+  <div id="content">
+    <div class="state-msg" id="loading-msg">Loading today's rates…</div>
+  </div>
+
+  <footer>
+    Prices via <a href="https://gold-api.com" target="_blank" rel="noopener">gold-api.com</a> · Updated automatically once a day
+    <br>Last refreshed: <span id="last-updated">—</span>
+  </footer>
+
+</div>
+
+<script>
+  const todayDateEl = document.getElementById('today-date');
+  todayDateEl.textContent = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+
+  function fmt(n, opts) {
+    return Number(n).toLocaleString('en-IN', opts || { maximumFractionDigits: 2 });
+  }
+
+  function renderCards(data) {
+    const g = data.gold, s = data.silver;
+    return `
+      <div class="cards">
+        <div class="ingot gold">
+          <div class="hallmark">Au 999</div>
+          <div class="metal-name">Gold</div>
+          <div class="price-row">
+            <span class="price-label">USD / troy oz</span>
+            <span class="price-value">$${fmt(g.USD.per_oz)}</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">INR / 10 grams</span>
+            <span class="price-value">₹${fmt(g.INR.per_10g)}</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">INR / gram</span>
+            <span class="price-value">₹${fmt(g.INR.per_gram)}</span>
+          </div>
+        </div>
+        <div class="ingot silver">
+          <div class="hallmark">Ag 999</div>
+          <div class="metal-name">Silver</div>
+          <div class="price-row">
+            <span class="price-label">USD / troy oz</span>
+            <span class="price-value">$${fmt(s.USD.per_oz)}</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">INR / 10 grams</span>
+            <span class="price-value">₹${fmt(s.INR.per_10g)}</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">INR / gram</span>
+            <span class="price-value">₹${fmt(s.INR.per_gram)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-section">
+        <h2>Price Trend</h2>
+        <div class="sub">Gold &amp; Silver, INR per 10 grams — recent history</div>
+        <div class="chart-container">
+          <canvas id="trend-chart"></canvas>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderChart(rows) {
+    const ctx = document.getElementById('trend-chart');
+    if (!ctx || !rows.length) return;
+
+    const labels = rows.map(r => r.date);
+    const goldData = rows.map(r => Number(r.gold_inr_10g));
+    const silverData = rows.map(r => Number(r.silver_inr_10g));
+
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Gold (₹/10g)',
+            data: goldData,
+            borderColor: '#e0bb3f',
+            backgroundColor: 'rgba(224,187,63,0.08)',
+            yAxisID: 'y',
+            tension: 0.25,
+            pointRadius: 2,
+          },
+          {
+            label: 'Silver (₹/10g)',
+            data: silverData,
+            borderColor: '#d4d7db',
+            backgroundColor: 'rgba(212,215,219,0.06)',
+            yAxisID: 'y1',
+            tension: 0.25,
+            pointRadius: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: '#ede9e3', font: { family: 'JetBrains Mono', size: 11 } },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: '#8b8f98', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 8 },
+            grid: { color: '#33373f' },
+          },
+          y: {
+            position: 'left',
+            ticks: { color: '#e0bb3f', font: { size: 10 } },
+            grid: { color: '#33373f' },
+            title: { display: true, text: 'Gold ₹', color: '#e0bb3f', font: { size: 10 } },
+          },
+          y1: {
+            position: 'right',
+            ticks: { color: '#d4d7db', font: { size: 10 } },
+            grid: { display: false },
+            title: { display: true, text: 'Silver ₹', color: '#d4d7db', font: { size: 10 } },
+          },
+        },
+      },
+    });
+  }
+
+  function parseCsv(text) {
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',');
+    return lines.slice(1).map(line => {
+      const values = line.split(',');
+      const row = {};
+      headers.forEach((h, i) => row[h.trim()] = values[i]);
+      return row;
+    });
+  }
+
+  async function init() {
+    const contentEl = document.getElementById('content');
+    try {
+      const res = await fetch('prices.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('prices.json not found');
+      const data = await res.json();
+
+      contentEl.innerHTML = renderCards(data);
+      document.getElementById('last-updated').textContent =
+        new Date(data.updated_at).toLocaleString('en-IN');
+
+      try {
+        const historyRes = await fetch('history.csv', { cache: 'no-store' });
+        if (historyRes.ok) {
+          const csvText = await historyRes.text();
+          const rows = parseCsv(csvText).slice(-30); // last 30 entries
+          renderChart(rows);
+        }
+      } catch (chartErr) {
+        console.warn('Could not load history for chart:', chartErr);
+      }
+    } catch (err) {
+      contentEl.innerHTML = `<div class="state-msg">
+        Couldn't load today's prices yet. The first automated run will
+        populate this page — check back after the daily update.
+      </div>`;
+      console.error(err);
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

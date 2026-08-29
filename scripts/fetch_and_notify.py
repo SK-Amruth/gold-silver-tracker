@@ -45,6 +45,12 @@ GOLD_PURITY_RATIOS = {
     "18k": 18 / 24,
 }
 
+# Approximate multiplier to go from international spot (converted to INR)
+# to Indian retail gold price. Covers import duty (~15%), GST (3%), and a
+# small dealer/bullion-association margin. This is a fixed estimate, not a
+# live figure — actual local rates vary day to day and city to city.
+INDIA_RETAIL_PREMIUM = 1.18
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HISTORY_CSV = os.path.join(REPO_ROOT, "data", "history.csv")
 PRICES_JSON = os.path.join(REPO_ROOT, "docs", "prices.json")
@@ -69,10 +75,11 @@ def fetch_price(symbol: str, currency: str) -> float:
     return float(data["price"])
 
 
-def build_gold_purity_breakdown(price_per_gram_24k: float) -> dict:
-    """Derive 24K/22K/18K per-gram prices from the 24K (999 fine) rate."""
+def build_gold_purity_breakdown(price_per_gram_24k: float, premium: float = 1.0) -> dict:
+    """Derive 24K/22K/18K per-gram prices from the 24K (999 fine) rate,
+    optionally applying a retail premium multiplier."""
     return {
-        karat: round(price_per_gram_24k * ratio, 2)
+        karat: round(price_per_gram_24k * ratio * premium, 2)
         for karat, ratio in GOLD_PURITY_RATIOS.items()
     }
 
@@ -91,7 +98,15 @@ def fetch_all_prices() -> dict:
                 "per_10g": round(price_per_gram * 10, 2),
             }
             if symbol_key == "gold":
-                entry["purity"] = build_gold_purity_breakdown(price_per_gram)
+                # "spot" = raw international rate converted to INR/USD.
+                # "retail" = spot with an approximate India retail premium
+                # (import duty + GST + dealer margin) applied. Retail is only
+                # meaningful in INR; for USD we just repeat spot for symmetry.
+                entry["purity_spot"] = build_gold_purity_breakdown(price_per_gram)
+                if currency == "INR":
+                    entry["purity_retail"] = build_gold_purity_breakdown(
+                        price_per_gram, INDIA_RETAIL_PREMIUM
+                    )
             prices[symbol_key][currency] = entry
     return prices
 
@@ -100,13 +115,15 @@ def fetch_all_prices() -> dict:
 # Step 2: Build & send email
 # ---------------------------------------------------------------------------
 def build_email_html(prices: dict, date_str: str) -> str:
-    gold_inr_purity = prices["gold"]["INR"]["purity"]
+    spot = prices["gold"]["INR"]["purity_spot"]
+    retail = prices["gold"]["INR"]["purity_retail"]
     silver = prices["silver"]
 
     gold_purity_rows = "".join(f"""
         <tr>
           <td style="padding:8px 16px;border-bottom:1px solid #eee;">{karat.upper()} Gold</td>
-          <td style="padding:8px 16px;border-bottom:1px solid #eee;">₹{gold_inr_purity[karat]} / gram</td>
+          <td style="padding:8px 16px;border-bottom:1px solid #eee;">₹{spot[karat]} / gram</td>
+          <td style="padding:8px 16px;border-bottom:1px solid #eee;">₹{retail[karat]} / gram</td>
         </tr>
         """ for karat in ("24k", "22k", "18k"))
 
@@ -115,12 +132,13 @@ def build_email_html(prices: dict, date_str: str) -> str:
       <body style="font-family:Arial,sans-serif;color:#222;">
         <h2>Gold &amp; Silver Prices — {date_str}</h2>
 
-        <h3 style="margin-bottom:6px;">🥇 Gold — Bengaluru rate (per gram, by purity)</h3>
-        <table style="border-collapse:collapse;width:100%;max-width:480px;margin-bottom:20px;">
+        <h3 style="margin-bottom:6px;">🥇 Gold (per gram, by purity)</h3>
+        <table style="border-collapse:collapse;width:100%;max-width:560px;margin-bottom:20px;">
           <thead>
             <tr style="background:#f5f5f5;text-align:left;">
               <th style="padding:8px 16px;">Purity</th>
-              <th style="padding:8px 16px;">Price</th>
+              <th style="padding:8px 16px;">International Spot</th>
+              <th style="padding:8px 16px;">Bengaluru Retail (est.)</th>
             </tr>
           </thead>
           <tbody>
@@ -132,7 +150,7 @@ def build_email_html(prices: dict, date_str: str) -> str:
         </p>
 
         <h3 style="margin-bottom:6px;">🥈 Silver</h3>
-        <table style="border-collapse:collapse;width:100%;max-width:480px;">
+        <table style="border-collapse:collapse;width:100%;max-width:560px;">
           <tbody>
             <tr>
               <td style="padding:8px 16px;border-bottom:1px solid #eee;">Silver</td>
@@ -144,9 +162,10 @@ def build_email_html(prices: dict, date_str: str) -> str:
         </table>
 
         <p style="color:#888;font-size:12px;margin-top:16px;">
-          Gold purity prices are derived from the international 24K spot rate
-          (22K = 24K × 22/24, 18K = 24K × 18/24) and do not include GST or
-          making charges — your local jeweler's retail price may differ slightly.
+          "International Spot" is the raw international rate converted to INR.
+          "Bengaluru Retail (est.)" adds an approximate {round((INDIA_RETAIL_PREMIUM-1)*100)}%
+          for import duty, GST, and dealer margin — a fixed estimate, not a live jeweler quote,
+          so actual shop prices will vary slightly.
           <br>Source: gold-api.com · Sent automatically by GitHub Actions
         </p>
       </body>
@@ -190,7 +209,8 @@ def append_history(prices: dict, date_str: str) -> None:
     os.makedirs(os.path.dirname(HISTORY_CSV), exist_ok=True)
     file_exists = os.path.isfile(HISTORY_CSV)
 
-    gold_purity = prices["gold"]["INR"]["purity"]
+    spot = prices["gold"]["INR"]["purity_spot"]
+    retail = prices["gold"]["INR"]["purity_retail"]
 
     with open(HISTORY_CSV, "a", newline="") as f:
         writer = csv.writer(f)
@@ -198,13 +218,15 @@ def append_history(prices: dict, date_str: str) -> None:
             writer.writerow([
                 "date",
                 "gold_usd_oz", "gold_inr_10g",
-                "gold_24k_inr_gram", "gold_22k_inr_gram", "gold_18k_inr_gram",
+                "gold_24k_spot_inr_gram", "gold_22k_spot_inr_gram", "gold_18k_spot_inr_gram",
+                "gold_24k_retail_inr_gram", "gold_22k_retail_inr_gram", "gold_18k_retail_inr_gram",
                 "silver_usd_oz", "silver_inr_10g",
             ])
         writer.writerow([
             date_str,
             prices["gold"]["USD"]["per_oz"], prices["gold"]["INR"]["per_10g"],
-            gold_purity["24k"], gold_purity["22k"], gold_purity["18k"],
+            spot["24k"], spot["22k"], spot["18k"],
+            retail["24k"], retail["22k"], retail["18k"],
             prices["silver"]["USD"]["per_oz"], prices["silver"]["INR"]["per_10g"],
         ])
 

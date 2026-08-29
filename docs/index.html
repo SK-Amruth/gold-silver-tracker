@@ -167,6 +167,43 @@
     margin-bottom: 18px;
   }
 
+  .purity-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .purity-tab {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--hairline);
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .purity-tab:hover {
+    border-color: rgba(224,187,63,0.4);
+    color: var(--text);
+  }
+
+  .purity-tab.active {
+    background: rgba(224,187,63,0.12);
+    border-color: var(--gold-bright);
+    color: var(--gold-bright);
+  }
+
+  .purity-tab:focus-visible {
+    outline: 2px solid var(--gold-bright);
+    outline-offset: 2px;
+  }
+
   .purity-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -290,9 +327,46 @@
     return Number(n).toLocaleString('en-IN', opts || { maximumFractionDigits: 2 });
   }
 
+  let currentPurityData = null;
+
+  function renderPurityCells(purity) {
+    return `
+      <div class="purity-cell">
+        <div class="karat">24K (999)</div>
+        <div class="rate">₹${fmt(purity['24k'])}</div>
+      </div>
+      <div class="purity-cell">
+        <div class="karat">22K (916)</div>
+        <div class="rate">₹${fmt(purity['22k'])}</div>
+      </div>
+      <div class="purity-cell">
+        <div class="karat">18K (750)</div>
+        <div class="rate">₹${fmt(purity['18k'])}</div>
+      </div>
+    `;
+  }
+
+  function switchPurityTab(tab) {
+    if (!currentPurityData) return;
+    const purity = tab === 'retail'
+      ? currentPurityData.retail
+      : currentPurityData.spot;
+
+    document.getElementById('purity-grid').innerHTML = renderPurityCells(purity);
+    document.getElementById('tab-spot').classList.toggle('active', tab === 'spot');
+    document.getElementById('tab-retail').classList.toggle('active', tab === 'retail');
+    document.getElementById('purity-note').textContent = tab === 'retail'
+      ? `Spot rate + ~${currentPurityData.premiumPct}% for import duty, GST, and dealer margin — a fixed estimate, not a live jeweller quote.`
+      : 'Raw international 24K spot rate converted to INR (22K = ×22/24, 18K = ×18/24). Excludes duty, GST, and making charges.';
+  }
+  window.switchPurityTab = switchPurityTab;
+
   function renderCards(data) {
     const g = data.gold, s = data.silver;
-    const purity = g.INR.purity || {};
+    const spot = g.INR.purity_spot || {};
+    const retail = g.INR.purity_retail || {};
+    const premiumPct = spot['24k'] ? Math.round(((retail['24k'] / spot['24k']) - 1) * 100) : 18;
+    currentPurityData = { spot, retail, premiumPct };
 
     return `
       <div class="cards">
@@ -332,25 +406,16 @@
 
       <div class="purity-section">
         <h2>Gold Rate by Purity — Bengaluru</h2>
-        <div class="sub">Per gram, derived from the 24K international spot rate</div>
-        <div class="purity-grid">
-          <div class="purity-cell">
-            <div class="karat">24K (999)</div>
-            <div class="rate">₹${fmt(purity['24k'])}</div>
-          </div>
-          <div class="purity-cell">
-            <div class="karat">22K (916)</div>
-            <div class="rate">₹${fmt(purity['22k'])}</div>
-          </div>
-          <div class="purity-cell">
-            <div class="karat">18K (750)</div>
-            <div class="rate">₹${fmt(purity['18k'])}</div>
-          </div>
+        <div class="sub">Per gram — compare raw international spot vs. an estimated local retail price</div>
+        <div class="purity-tabs">
+          <button class="purity-tab active" id="tab-spot" onclick="switchPurityTab('spot')">International Spot</button>
+          <button class="purity-tab" id="tab-retail" onclick="switchPurityTab('retail')">Bengaluru Retail (Est. +${premiumPct}%)</button>
         </div>
-        <div class="purity-note">
-          Derived as 24K spot × purity ratio (22K = ×22/24, 18K = ×18/24).
-          Excludes GST and jeweller making charges — actual Bengaluru shop
-          prices typically run a little higher than this raw spot value.
+        <div class="purity-grid" id="purity-grid">
+          ${renderPurityCells(spot)}
+        </div>
+        <div class="purity-note" id="purity-note">
+          Raw international 24K spot rate converted to INR (22K = ×22/24, 18K = ×18/24). Excludes duty, GST, and making charges.
         </div>
       </div>
 
